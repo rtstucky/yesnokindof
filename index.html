@@ -66,8 +66,8 @@
                 <!-- Assessed value pie chart -->
                 <div id="value-chart-section">
                     <div class="detail-label">Assessed Value</div>
-                    <div style="width:70px;margin:6px auto;">
-                        <canvas id="valueChart"></canvas>
+                    <div style="margin:6px 0;">
+                        <canvas id="valueChart" width="70" height="70"></canvas>
                     </div>
                     <div id="value-chart-stats"></div>
                 </div>
@@ -331,8 +331,7 @@
                     }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
+                    responsive: false,
                     plugins: { legend: { display: false }, tooltip: { enabled: false } },
                     events: [],
                 }
