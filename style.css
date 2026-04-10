@@ -240,8 +240,8 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: 1fr auto auto;
-    column-gap: 28px;
+    grid-template-columns: 1fr auto auto auto;
+    column-gap: 16px;
     row-gap: 5px;
     align-items: start;
     margin-top: 4px;
@@ -278,32 +278,6 @@ body, html {
     font-weight: 400;
     color: black;
     font-size: 10px;
-}
-
-/* ─────────────────────────────────────────
-   PIE CHART
-───────────────────────────────────────── */
-
-#value-chart-section {
-    padding: 20px 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
-    font-size: 11px;
-    font-family: 'IBM Plex Mono', monospace;
-}
-
-#value-chart-stats {
-    margin-top: 6px;
-    font-size: 11px;
-    font-family: 'IBM Plex Mono', monospace;
-}
-
-.chart-stat-row {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-bottom: 3px;
-    font-size: 11px;
 }
 
 /* ─────────────────────────────────────────

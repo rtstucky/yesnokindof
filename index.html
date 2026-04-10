@@ -13,7 +13,6 @@
         gtag('config', 'G-FKE4FH3D5Z');
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -58,18 +57,9 @@
 
                 <!-- Stats -->
                 <div id="stats">
-                    <div class="detail-label">Parcels &amp; Land Area in Wichita</div>
+                    <div class="detail-label">Parcels, Land Area &amp; Assessed Value</div>
                     <div id="stats-wichita"></div>
                     <div id="stats-district" style="display:none"></div>
-                </div>
-
-                <!-- Assessed value pie chart -->
-                <div id="value-chart-section">
-                    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Assessed Value</div>
-                    <div style="margin:6px 0;">
-                        <canvas id="valueChart" width="70" height="70"></canvas>
-                    </div>
-                    <div id="value-chart-stats" style="font-size:11px;font-family:'IBM Plex Mono',monospace;"></div>
                 </div>
 
                 <!-- District filter -->
@@ -140,7 +130,6 @@
         let selectedDistricts = new Set(['All']);
         let activeCategories = new Set(['owner-occupied', 'local', 'out-of-town', 'no-data']);
         let categoryStats = {};
-        let valueChart = null;
 
         // ── Map init ──────────────────────────────────────────────────────
 
@@ -213,7 +202,6 @@
 
             computeStats();
             updateStats();
-            updatePieChart(categoryStats['All']);
             buildDistrictCheckboxes([...districtNums].sort((a, b) => Number(a) - Number(b)));
         }
 
@@ -269,13 +257,18 @@
         }
 
         function statsHTML(stats, label) {
-            const totalN  = CAT_KEYS.reduce((a, k) => a + stats[k].n,  0);
-            const totalAc = CAT_KEYS.reduce((a, k) => a + stats[k].ac, 0);
-            const pctN  = n  => totalN  > 0 ? '(' + (n  / totalN  * 100).toFixed(1) + '%)' : '';
-            const pctAc = ac => totalAc > 0 ? '(' + (ac / totalAc * 100).toFixed(1) + '%)' : '';
-            const fmtAc = ac => ac >= 1000
-                ? (ac / 1000).toFixed(1) + 'K ac'
-                : ac.toFixed(1) + ' ac';
+            const totalN   = CAT_KEYS.reduce((a, k) => a + stats[k].n,   0);
+            const totalAc  = CAT_KEYS.reduce((a, k) => a + stats[k].ac,  0);
+            const totalAss = CAT_KEYS.reduce((a, k) => a + stats[k].ass, 0);
+            const pctN   = n   => totalN   > 0 ? '(' + (n   / totalN   * 100).toFixed(1) + '%)' : '';
+            const pctAc  = ac  => totalAc  > 0 ? '(' + (ac  / totalAc  * 100).toFixed(1) + '%)' : '';
+            const pctAss = ass => totalAss > 0 ? '(' + (ass / totalAss * 100).toFixed(1) + '%)' : '';
+            const fmtAc  = ac  => ac >= 1000 ? (ac / 1000).toFixed(1) + 'K ac' : ac.toFixed(1) + ' ac';
+            const fmtAss = n   => n >= 1e9
+                ? '$' + (n / 1e9).toFixed(2) + 'B'
+                : n >= 1e6
+                    ? '$' + (n / 1e6).toFixed(1) + 'M'
+                    : '$' + Math.round(n).toLocaleString();
             const dot = color => `<svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="6" fill="${color}"/></svg>`;
 
             const rows = [
@@ -290,58 +283,15 @@
                     <div></div>
                     <div class="sg-head">Parcels</div>
                     <div class="sg-head">Acres</div>
+                    <div class="sg-head">Assessed</div>
                     ${rows.map(r => `
                     <div class="sg-label">${dot(r.color)}${r.label}</div>
                     <div class="sg-val">${stats[r.key].n.toLocaleString()}<br><span class="sg-pct">${pctN(stats[r.key].n)}</span></div>
                     <div class="sg-val">${fmtAc(stats[r.key].ac)}<br><span class="sg-pct">${pctAc(stats[r.key].ac)}</span></div>
+                    <div class="sg-val">${fmtAss(stats[r.key].ass)}<br><span class="sg-pct">${pctAss(stats[r.key].ass)}</span></div>
                     `).join('')}
                 </div>
             `;
-        }
-
-        // ── Pie chart ─────────────────────────────────────────────────────
-
-        function updatePieChart(stats) {
-            const PIE_CATS = [
-                { key: 'out-of-town',    color: '#4CAF50', label: 'Yes'   },
-                { key: 'owner-occupied', color: '#7570b3', label: 'No'    },
-                { key: 'local',          color: '#d95f02', label: 'Kind of' },
-            ];
-
-            const vals  = PIE_CATS.map(c => stats[c.key].ass);
-            const total = vals.reduce((a, b) => a + b, 0);
-
-            const fmtAss = n => n >= 1e9
-                ? '$' + (n / 1e9).toFixed(2) + 'B'
-                : n >= 1e6
-                    ? '$' + (n / 1e6).toFixed(1) + 'M'
-                    : '$' + Math.round(n).toLocaleString();
-
-            const ctx = document.getElementById('valueChart').getContext('2d');
-            if (valueChart) valueChart.destroy();
-            valueChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: PIE_CATS.map(c => c.label),
-                    datasets: [{
-                        data: vals,
-                        backgroundColor: PIE_CATS.map(c => c.color),
-                        borderColor: '#fff',
-                        borderWidth: 2,
-                    }]
-                },
-                options: {
-                    responsive: false,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                    events: [],
-                }
-            });
-
-            document.getElementById('value-chart-stats').innerHTML = PIE_CATS.map(c => `
-                <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;font-size:11px;font-family:'IBM Plex Mono',monospace;">
-                    <svg width="9" height="9" style="flex-shrink:0"><circle cx="4.5" cy="4.5" r="4.5" fill="${c.color}"/></svg>
-                    <span>${c.label}: <strong>${fmtAss(stats[c.key].ass)}</strong> (${total > 0 ? (stats[c.key].ass / total * 100).toFixed(1) : 0}%)</span>
-                </div>`).join('');
         }
 
         function updateStats() {
@@ -356,16 +306,13 @@
                 const ds = categoryStats[d] ?? emptyStats();
                 districtEl.style.display = 'block';
                 districtEl.innerHTML = statsHTML(ds, `District ${d}`);
-                updatePieChart(ds);
             } else if (!isAll && selectedDistricts.size > 1) {
                 const merged = mergeStats([...selectedDistricts]);
                 const names = [...selectedDistricts].sort((a, b) => Number(a) - Number(b)).join(', ');
                 districtEl.style.display = 'block';
                 districtEl.innerHTML = statsHTML(merged, `Districts ${names}`);
-                updatePieChart(merged);
             } else {
                 districtEl.style.display = 'none';
-                updatePieChart(categoryStats['All'] ?? emptyStats());
             }
         }
 
