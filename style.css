@@ -240,7 +240,7 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: min-content 50px 44px max-content;
+    grid-template-columns: min-content 42px 36px 1fr;
     column-gap: 4px;
     row-gap: 5px;
     align-items: start;
@@ -250,8 +250,6 @@ body, html {
 .sg-head {
     font-weight: 700;
     font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
     text-decoration: underline;
     color: black;
     text-align: right;
