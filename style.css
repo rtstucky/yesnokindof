@@ -240,8 +240,8 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: min-content 42px 36px 1fr;
-    column-gap: 4px;
+    grid-template-columns: min-content 42px 36px max-content;
+    column-gap: 8px;
     row-gap: 5px;
     align-items: start;
     margin-top: 4px;
