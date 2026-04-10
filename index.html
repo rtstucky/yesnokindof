@@ -263,12 +263,12 @@
             const pctN   = n   => totalN   > 0 ? '(' + (n   / totalN   * 100).toFixed(1) + '%)' : '';
             const pctAc  = ac  => totalAc  > 0 ? '(' + (ac  / totalAc  * 100).toFixed(1) + '%)' : '';
             const pctAss = ass => totalAss > 0 ? '(' + (ass / totalAss * 100).toFixed(1) + '%)' : '';
-            const fmtAc  = ac  => ac >= 1000 ? (ac / 1000).toFixed(1) + 'K ac' : ac.toFixed(1) + ' ac';
+            const fmtAc  = ac  => ac >= 1000 ? (ac / 1000).toFixed(1) + 'K' : ac.toFixed(1);
             const fmtAss = n   => n >= 1e9
-                ? '$' + (n / 1e9).toFixed(2) + 'B'
+                ? (n / 1e9).toFixed(2) + 'B'
                 : n >= 1e6
-                    ? '$' + (n / 1e6).toFixed(1) + 'M'
-                    : '$' + Math.round(n).toLocaleString();
+                    ? (n / 1e6).toFixed(1) + 'M'
+                    : Math.round(n).toLocaleString();
             const dot = color => `<svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="6" fill="${color}"/></svg>`;
 
             const rows = [
@@ -283,7 +283,7 @@
                     <div></div>
                     <div class="sg-head">Parcels</div>
                     <div class="sg-head">Acres</div>
-                    <div class="sg-head">Assessed</div>
+                    <div class="sg-head">Assessed ($)</div>
                     ${rows.map(r => `
                     <div class="sg-label">${dot(r.color)}${r.label}</div>
                     <div class="sg-val">${stats[r.key].n.toLocaleString()}<br><span class="sg-pct">${pctN(stats[r.key].n)}</span></div>
