@@ -291,20 +291,20 @@ body, html {
 }
 
 #valueChart {
-    max-width: 160px;
-    margin: 10px auto;
+    max-width: 100px;
+    margin: 8px auto;
 }
 
 #value-chart-stats {
-    margin-top: 8px;
-    font-size: 11px;
+    margin-top: 6px;
+    font-size: 10px;
 }
 
 .chart-stat-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    gap: 5px;
+    margin-bottom: 3px;
 }
 
 /* ─────────────────────────────────────────
