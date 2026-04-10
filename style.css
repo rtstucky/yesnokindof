@@ -288,16 +288,14 @@ body, html {
     padding: 20px 0;
     border-bottom: 1px solid rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
-}
-
-#valueChart {
-    max-width: 70px;
-    margin: 6px auto;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
 }
 
 #value-chart-stats {
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
 }
 
 .chart-stat-row {
@@ -305,6 +303,7 @@ body, html {
     align-items: center;
     gap: 5px;
     margin-bottom: 3px;
+    font-size: 11px;
 }
 
 /* ─────────────────────────────────────────
