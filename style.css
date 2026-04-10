@@ -291,8 +291,8 @@ body, html {
 }
 
 #valueChart {
-    max-width: 100px;
-    margin: 8px auto;
+    max-width: 70px;
+    margin: 6px auto;
 }
 
 #value-chart-stats {
