@@ -240,7 +240,7 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: min-content 42px 36px max-content;
+    grid-template-columns: minmax(min-content, 60px) 42px 36px max-content;
     column-gap: 8px;
     row-gap: 5px;
     align-items: start;
@@ -252,7 +252,7 @@ body, html {
     font-size: 10px;
     text-decoration: underline;
     color: black;
-    text-align: right;
+    text-align: center;
     width: 100%;
     white-space: nowrap;
 }
@@ -270,7 +270,7 @@ body, html {
 .sg-val {
     font-weight: 600;
     font-size: 11px;
-    text-align: right;
+    text-align: center;
     line-height: 1.5;
     width: 100%;
 }
