@@ -65,11 +65,11 @@
 
                 <!-- Assessed value pie chart -->
                 <div id="value-chart-section">
-                    <div class="detail-label">Assessed Value</div>
+                    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Assessed Value</div>
                     <div style="margin:6px 0;">
                         <canvas id="valueChart" width="70" height="70"></canvas>
                     </div>
-                    <div id="value-chart-stats"></div>
+                    <div id="value-chart-stats" style="font-size:11px;font-family:'IBM Plex Mono',monospace;"></div>
                 </div>
 
                 <!-- District filter -->
@@ -338,8 +338,8 @@
             });
 
             document.getElementById('value-chart-stats').innerHTML = PIE_CATS.map(c => `
-                <div class="chart-stat-row">
-                    <svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="5" fill="${c.color}"/></svg>
+                <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;font-size:11px;font-family:'IBM Plex Mono',monospace;">
+                    <svg width="9" height="9" style="flex-shrink:0"><circle cx="4.5" cy="4.5" r="4.5" fill="${c.color}"/></svg>
                     <span>${c.label}: <strong>${fmtAss(stats[c.key].ass)}</strong> (${total > 0 ? (stats[c.key].ass / total * 100).toFixed(1) : 0}%)</span>
                 </div>`).join('');
         }
