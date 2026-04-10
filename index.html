@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yes, No, Kind Of</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="container">
+        <div id="map"></div>
+
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <div class="title-box">
+                    <h1>Yes, No, Kind Of</h1>
+                    <div class="title-box-btm"></div>
+                </div>
+                <p class="detail-label" style="margin-bottom:4px">Is your property owned by someone from out of town?</p>
+                <p id="status">Loading...</p>
+            </div>
+
+            <div id="sidebar-content">
+
+                <!-- Categorical legend / toggles -->
+                <div id="legend">
+                    <div class="detail-label">Owner Status <span id="legend-hint">— click to toggle</span></div>
+                    <div class="legend-row legend-toggle active" data-cat="out-of-town">
+                        <svg width="12" height="12" style="flex-shrink:0;margin-top:2px"><circle cx="6" cy="6" r="6" fill="#4CAF50"/></svg>
+                        <div><div class="legend-answer">Yes</div><div class="legend-sub">owner is from out of town</div></div>
+                    </div>
+                    <div class="legend-row legend-toggle active" data-cat="owner-occupied">
+                        <svg width="12" height="12" style="flex-shrink:0;margin-top:2px"><circle cx="6" cy="6" r="6" fill="#7570b3"/></svg>
+                        <div><div class="legend-answer">No</div><div class="legend-sub">property is owner-occupied</div></div>
+                    </div>
+                    <div class="legend-row legend-toggle active" data-cat="local">
+                        <svg width="12" height="12" style="flex-shrink:0;margin-top:2px"><circle cx="6" cy="6" r="6" fill="#d95f02"/></svg>
+                        <div><div class="legend-answer">Kind of</div><div class="legend-sub">owned by someone with a different Wichita address</div></div>
+                    </div>
+                    <div class="legend-row legend-toggle active" data-cat="no-data">
+                        <svg width="12" height="12" style="flex-shrink:0;margin-top:2px"><circle cx="6" cy="6" r="6" fill="#cccccc"/></svg>
+                        <div><div class="legend-answer">No data</div></div>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div id="stats">
+                    <div class="detail-label">Parcels &amp; Land Area in Wichita</div>
+                    <div id="stats-wichita"></div>
+                    <div id="stats-district" style="display:none"></div>
+                </div>
+
+                <!-- District filter -->
+                <div id="district-filter">
+                    <div id="district-filter-label">Filter by District</div>
+                    <div id="district-checkboxes">Loading...</div>
+                </div>
+
+                <!-- Selected parcel info -->
+                <div id="parcel-info" style="display:none">
+                    <div class="detail-label">Selected Parcel</div>
+                    <div id="parcel-details"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/flatgeobuf@3.30.0/dist/flatgeobuf-geojson.min.js"></script>
+    <script>
+
+        // ── Owner categories ───────────────────────────────────────────────
+
+        const CATEGORIES = {
+            'owner-occupied': { color: '#7570b3', label: 'No',       statsLabel: 'Owner-occupied' },
+            'local':          { color: '#d95f02', label: 'Kind of',  statsLabel: 'Locally owned'  },
+            'out-of-town':    { color: '#4CAF50', label: 'Yes',      statsLabel: 'Out of town'    },
+            'no-data':        { color: '#cccccc', label: 'No data',  statsLabel: 'No data'        },
+        };
+
+        // Strip ZIP+4 extension (e.g. "67208-3813" → "67208")
+        function cleanOwnerAdd(raw) {
+            return (raw || '').replace(/-\d{4}\b/g, '').trim();
+        }
+
+        function getOwnerCategory(p) {
+            const rawOwner = cleanOwnerAdd(p.ownerAdd || '');
+            if (!rawOwner.trim()) return 'no-data';
+
+            // Normalize: uppercase, strip punctuation, collapse whitespace
+            const norm = s => s.toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+            const ownerNorm = norm(rawOwner);
+
+            // Use first 3 tokens of situs (house# + direction + street name)
+            // to avoid mismatches on street type (AVE vs blank)
+            // e.g. "218 N BROADVIEW AVE" → "218 N BROADVIEW"
+            const situsPrefix = norm(p.address || '').split(' ').slice(0, 3).join(' ');
+
+            if (situsPrefix.length > 5 && ownerNorm.startsWith(situsPrefix)) {
+                return 'owner-occupied';
+            }
+
+            // Local: WICHITA appears somewhere in ownerAdd
+            if (ownerNorm.includes('WICHITA')) return 'local';
+
+            return 'out-of-town';
+        }
+
+        function getCategoryColor(p) {
+            return CATEGORIES[p._category].color;
+        }
+
+        // ── State ─────────────────────────────────────────────────────────
+
+        let map, renderer, parcelLayer;
+        let allFeatures = [];
+        let selectedDistricts = new Set(['All']);
+        let activeCategories = new Set(['owner-occupied', 'local', 'out-of-town', 'no-data']);
+        let categoryStats = {};   // { 'All': {owner-occupied: {n, ac}, local: {n,ac}, ...}, '1': {...}, ... }
+
+        // ── Map init ──────────────────────────────────────────────────────
+
+        function initMap() {
+            renderer = L.canvas({ padding: 0.5 });
+            map = L.map('map', { renderer }).setView([37.6872, -97.3301], 11);
+
+            L.tileLayer('https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png?api_key=4f4c222f-cf1d-412d-a93a-e8bdaf1e4a3d', {
+                maxZoom: 20,
+                attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://stamen.com/">Stamen Design</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            map.on('click', () => {
+                document.getElementById('parcel-info').style.display = 'none';
+            });
+        }
+
+        // ── Load FlatGeobuf ───────────────────────────────────────────────
+
+        async function loadParcels() {
+            setStatus('Loading parcels...');
+
+            const response = await fetch('parcels.fgb');
+            if (!response.ok) throw new Error('parcels.fgb not found');
+
+            const districtNums = new Set();
+            let count = 0;
+
+            for await (const feature of flatgeobuf.deserialize(response.body)) {
+                const p = feature.properties;
+
+                // Pre-compute category once per feature
+                p._category = getOwnerCategory(p);
+
+                // Acres for stats and info panel
+                p._acres = p.ParcAcresC || (p.ParcSqFTC ? p.ParcSqFTC / 43560 : null);
+
+                if (p.district) districtNums.add(p.district);
+                allFeatures.push(feature);
+                count++;
+
+                if (count % 10000 === 0) {
+                    setStatus(`Loading... ${count.toLocaleString()} parcels`);
+                }
+            }
+
+            setStatus(`Rendering ${count.toLocaleString()} parcels...`);
+            await new Promise(r => setTimeout(r, 0));
+
+            parcelLayer = L.geoJSON({ type: 'FeatureCollection', features: allFeatures }, {
+                renderer,
+                style(feature) {
+                    return {
+                        fillColor:   getCategoryColor(feature.properties),
+                        fillOpacity: 0.75,
+                        color:       '#555',
+                        weight:      0.5,
+                    };
+                },
+                onEachFeature(feature, layer) {
+                    layer.on('click', e => {
+                        L.DomEvent.stopPropagation(e);
+                        showParcelInfo(feature.properties);
+                    });
+                }
+            }).addTo(map);
+
+            map.fitBounds(parcelLayer.getBounds());
+            setStatus(`${count.toLocaleString()} parcels loaded`);
+
+            computeStats();
+            updateStats();
+            buildDistrictCheckboxes([...districtNums].sort((a, b) => Number(a) - Number(b)));
+        }
+
+        // ── Category stats (parcels + acres) ─────────────────────────────
+
+        const CAT_KEYS = ['owner-occupied', 'local', 'out-of-town', 'no-data'];
+
+        function emptyStats() {
+            const s = {};
+            for (const k of CAT_KEYS) s[k] = { n: 0, ac: 0 };
+            return s;
+        }
+
+        function computeStats() {
+            const byDistrict = {};
+            const allStats = emptyStats();
+
+            for (const f of allFeatures) {
+                const p = f.properties;
+                const cat = p._category;
+                const ac = p._acres || 0;
+                allStats[cat].n++;
+                allStats[cat].ac += ac;
+                const d = String(p.district ?? '');
+                if (d) {
+                    byDistrict[d] ??= emptyStats();
+                    byDistrict[d][cat].n++;
+                    byDistrict[d][cat].ac += ac;
+                }
+            }
+
+            categoryStats['All'] = allStats;
+            for (const [d, stats] of Object.entries(byDistrict)) {
+                categoryStats[d] = stats;
+            }
+        }
+
+        function mergeStats(districts) {
+            const merged = emptyStats();
+            for (const d of districts) {
+                const ds = categoryStats[d];
+                if (!ds) continue;
+                for (const k of CAT_KEYS) {
+                    merged[k].n  += ds[k].n;
+                    merged[k].ac += ds[k].ac;
+                }
+            }
+            return merged;
+        }
+
+        function statsHTML(stats, label) {
+            const totalN  = CAT_KEYS.reduce((a, k) => a + stats[k].n,  0);
+            const totalAc = CAT_KEYS.reduce((a, k) => a + stats[k].ac, 0);
+            const pctN  = n  => totalN  > 0 ? '(' + (n  / totalN  * 100).toFixed(1) + '%)' : '';
+            const pctAc = ac => totalAc > 0 ? '(' + (ac / totalAc * 100).toFixed(1) + '%)' : '';
+            const fmtAc = ac => ac >= 1000
+                ? (ac / 1000).toFixed(1) + 'K ac'
+                : ac.toFixed(1) + ' ac';
+            const dot = color => `<svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="6" fill="${color}"/></svg>`;
+
+            const rows = [
+                { key: 'out-of-town',    color: '#4CAF50', label: 'Out of town'    },
+                { key: 'owner-occupied', color: '#7570b3', label: 'Owner-occupied' },
+                { key: 'local',          color: '#d95f02', label: 'Locally owned'  },
+            ];
+
+            return `
+                ${label ? `<div class="stats-row"><span class="stats-label">${label}</span></div>` : ''}
+                <div class="stats-grid">
+                    <div></div>
+                    <div class="sg-head">Parcels</div>
+                    <div class="sg-head">Acres</div>
+                    ${rows.map(r => `
+                    <div class="sg-label">${dot(r.color)}${r.label}</div>
+                    <div class="sg-val">${stats[r.key].n.toLocaleString()}<br><span class="sg-pct">${pctN(stats[r.key].n)}</span></div>
+                    <div class="sg-val">${fmtAc(stats[r.key].ac)}<br><span class="sg-pct">${pctAc(stats[r.key].ac)}</span></div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function updateStats() {
+            const allStats = categoryStats['All'] ?? emptyStats();
+            document.getElementById('stats-wichita').innerHTML = statsHTML(allStats, '');
+
+            const districtEl = document.getElementById('stats-district');
+            const isAll = selectedDistricts.has('All') || selectedDistricts.size === 0;
+
+            if (!isAll && selectedDistricts.size === 1) {
+                const d = [...selectedDistricts][0];
+                const ds = categoryStats[d] ?? emptyStats();
+                districtEl.style.display = 'block';
+                districtEl.innerHTML = statsHTML(ds, `District ${d}`);
+            } else if (!isAll && selectedDistricts.size > 1) {
+                const merged = mergeStats([...selectedDistricts]);
+                const names = [...selectedDistricts].sort((a, b) => Number(a) - Number(b)).join(', ');
+                districtEl.style.display = 'block';
+                districtEl.innerHTML = statsHTML(merged, `Districts ${names}`);
+            } else {
+                districtEl.style.display = 'none';
+            }
+        }
+
+        // ── Parcel info panel ─────────────────────────────────────────────
+
+        function showParcelInfo(p) {
+            document.getElementById('parcel-info').style.display = 'block';
+
+            const $ = n => (n != null && !isNaN(n) && n !== '') ? '$' + Math.round(n).toLocaleString() : '—';
+
+            const cat = p._category;
+            const catInfo = CATEGORIES[cat];
+            const statusHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
+                <svg width="12" height="12" style="flex-shrink:0;vertical-align:middle"><circle cx="6" cy="6" r="6" fill="${catInfo.color}"/></svg>${catInfo.statsLabel}
+            </span>`;
+
+            document.getElementById('parcel-details').innerHTML = `
+                <div class="parcel-row parcel-row--highlight">
+                    <span class="parcel-key">Owner Status</span>
+                    <span class="parcel-val">${statusHTML}</span>
+                </div>
+                <div class="parcel-divider"></div>
+                <div class="parcel-row"><span class="parcel-key">PIN</span><span class="parcel-val">${p.PIN ?? '—'}</span></div>
+                <div class="parcel-row"><span class="parcel-key">Address</span><span class="parcel-val">${p.address || '—'}</span></div>
+                <div class="parcel-row"><span class="parcel-key">Owner</span><span class="parcel-val">${p.owner || '—'}</span></div>
+                <div class="parcel-row"><span class="parcel-key">Owner Addr</span><span class="parcel-val">${cleanOwnerAdd(p.ownerAdd) || '—'}</span></div>
+                <div class="parcel-divider"></div>
+                <div class="parcel-row"><span class="parcel-key">App. Land</span><span class="parcel-val">${$(p.apprLand)}</span></div>
+                <div class="parcel-row"><span class="parcel-key">App. Bldg</span><span class="parcel-val">${$(p.apprBldg)}</span></div>
+                <div class="parcel-row"><span class="parcel-key">App. Total</span><span class="parcel-val">${$(p.apprTotal)}</span></div>
+                <div class="parcel-row"><span class="parcel-key">Assessed</span><span class="parcel-val">${$(p.assTotal)}</span></div>
+            `;
+        }
+
+        // ── Visibility ────────────────────────────────────────────────────
+
+        let rafPending = false;
+
+        function applyVisibility() {
+            if (!parcelLayer) return;
+            if (rafPending) return;
+            rafPending = true;
+            requestAnimationFrame(() => {
+                rafPending = false;
+                const isAll = selectedDistricts.has('All') || selectedDistricts.size === 0;
+
+                parcelLayer.eachLayer(layer => {
+                    const p = layer.feature.properties;
+                    const inDistrict = isAll || selectedDistricts.has(String(p.district ?? ''));
+                    const inCategory = activeCategories.has(p._category);
+                    const visible = inDistrict && inCategory;
+                    layer.setStyle(visible
+                        ? { fillColor: getCategoryColor(p), fillOpacity: 0.75, color: '#555', weight: 0.5 }
+                        : { fillOpacity: 0, color: 'transparent', weight: 0 }
+                    );
+                });
+            });
+        }
+
+        // ── District filter ───────────────────────────────────────────────
+
+        function buildDistrictCheckboxes(names) {
+            document.getElementById('district-checkboxes').innerHTML = `
+                <label class="district-check">
+                    <input type="checkbox" value="All" checked onchange="handleDistrictChange(this)"> All
+                </label>
+                ${names.map(n => `
+                <label class="district-check">
+                    <input type="checkbox" value="${n}" onchange="handleDistrictChange(this)"> District ${n}
+                </label>`).join('')}
+            `;
+        }
+
+        function handleDistrictChange(checkbox) {
+            if (checkbox.value === 'All') {
+                selectedDistricts = new Set(['All']);
+                document.querySelectorAll('#district-checkboxes input').forEach(cb => {
+                    cb.checked = checkbox.checked;
+                    if (cb.value !== 'All') selectedDistricts.add(cb.value);
+                });
+                if (!checkbox.checked) selectedDistricts = new Set();
+            } else {
+                selectedDistricts.delete('All');
+                document.querySelector('#district-checkboxes input[value="All"]').checked = false;
+                if (checkbox.checked) selectedDistricts.add(checkbox.value);
+                else selectedDistricts.delete(checkbox.value);
+            }
+            applyVisibility();
+            updateStats();
+        }
+
+        // ── Util ──────────────────────────────────────────────────────────
+
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // ── Boot ──────────────────────────────────────────────────────────
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            loadParcels().catch(err => {
+                console.error(err);
+                setStatus('Error: ' + err.message);
+            });
+
+            document.querySelectorAll('.legend-toggle').forEach(el => {
+                el.addEventListener('click', () => {
+                    const cat = el.dataset.cat;
+                    if (activeCategories.has(cat)) {
+                        activeCategories.delete(cat);
+                        el.classList.remove('active');
+                    } else {
+                        activeCategories.add(cat);
+                        el.classList.add('active');
+                    }
+                    applyVisibility();
+                });
+            });
+        });
+
+    </script>
+</body>
+</html>
