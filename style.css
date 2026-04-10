@@ -240,7 +240,7 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: min-content 50px 44px 72px;
+    grid-template-columns: min-content 50px 44px max-content;
     column-gap: 4px;
     row-gap: 5px;
     align-items: start;
@@ -256,6 +256,7 @@ body, html {
     color: black;
     text-align: right;
     width: 100%;
+    white-space: nowrap;
 }
 
 .sg-label {
