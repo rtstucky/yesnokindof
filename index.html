@@ -13,6 +13,7 @@
         gtag('config', 'G-FKE4FH3D5Z');
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -60,6 +61,13 @@
                     <div class="detail-label">Parcels &amp; Land Area in Wichita</div>
                     <div id="stats-wichita"></div>
                     <div id="stats-district" style="display:none"></div>
+                </div>
+
+                <!-- Assessed value pie chart -->
+                <div id="value-chart-section">
+                    <div class="detail-label">Assessed Value</div>
+                    <canvas id="valueChart"></canvas>
+                    <div id="value-chart-stats"></div>
                 </div>
 
                 <!-- District filter -->
@@ -129,7 +137,8 @@
         let allFeatures = [];
         let selectedDistricts = new Set(['All']);
         let activeCategories = new Set(['owner-occupied', 'local', 'out-of-town', 'no-data']);
-        let categoryStats = {};   // { 'All': {owner-occupied: {n, ac}, local: {n,ac}, ...}, '1': {...}, ... }
+        let categoryStats = {};
+        let valueChart = null;
 
         // ── Map init ──────────────────────────────────────────────────────
 
@@ -202,6 +211,7 @@
 
             computeStats();
             updateStats();
+            updatePieChart(categoryStats['All']);
             buildDistrictCheckboxes([...districtNums].sort((a, b) => Number(a) - Number(b)));
         }
 
@@ -211,7 +221,7 @@
 
         function emptyStats() {
             const s = {};
-            for (const k of CAT_KEYS) s[k] = { n: 0, ac: 0 };
+            for (const k of CAT_KEYS) s[k] = { n: 0, ac: 0, ass: 0 };
             return s;
         }
 
@@ -222,14 +232,17 @@
             for (const f of allFeatures) {
                 const p = f.properties;
                 const cat = p._category;
-                const ac = p._acres || 0;
+                const ac  = p._acres   || 0;
+                const ass = p.assTotal || 0;
                 allStats[cat].n++;
-                allStats[cat].ac += ac;
+                allStats[cat].ac  += ac;
+                allStats[cat].ass += ass;
                 const d = String(p.district ?? '');
                 if (d) {
                     byDistrict[d] ??= emptyStats();
                     byDistrict[d][cat].n++;
-                    byDistrict[d][cat].ac += ac;
+                    byDistrict[d][cat].ac  += ac;
+                    byDistrict[d][cat].ass += ass;
                 }
             }
 
@@ -245,8 +258,9 @@
                 const ds = categoryStats[d];
                 if (!ds) continue;
                 for (const k of CAT_KEYS) {
-                    merged[k].n  += ds[k].n;
-                    merged[k].ac += ds[k].ac;
+                    merged[k].n   += ds[k].n;
+                    merged[k].ac  += ds[k].ac;
+                    merged[k].ass += ds[k].ass;
                 }
             }
             return merged;
@@ -283,6 +297,52 @@
             `;
         }
 
+        // ── Pie chart ─────────────────────────────────────────────────────
+
+        function updatePieChart(stats) {
+            const PIE_CATS = [
+                { key: 'out-of-town',    color: '#4CAF50', label: 'Yes'   },
+                { key: 'owner-occupied', color: '#7570b3', label: 'No'    },
+                { key: 'local',          color: '#d95f02', label: 'Kind of' },
+            ];
+
+            const vals  = PIE_CATS.map(c => stats[c.key].ass);
+            const total = vals.reduce((a, b) => a + b, 0);
+
+            const fmtAss = n => n >= 1e9
+                ? '$' + (n / 1e9).toFixed(2) + 'B'
+                : n >= 1e6
+                    ? '$' + (n / 1e6).toFixed(1) + 'M'
+                    : '$' + Math.round(n).toLocaleString();
+
+            const ctx = document.getElementById('valueChart').getContext('2d');
+            if (valueChart) valueChart.destroy();
+            valueChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: PIE_CATS.map(c => c.label),
+                    datasets: [{
+                        data: vals,
+                        backgroundColor: PIE_CATS.map(c => c.color),
+                        borderColor: '#fff',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    events: [],
+                }
+            });
+
+            document.getElementById('value-chart-stats').innerHTML = PIE_CATS.map(c => `
+                <div class="chart-stat-row">
+                    <svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="5" fill="${c.color}"/></svg>
+                    <span>${c.label}: <strong>${fmtAss(stats[c.key].ass)}</strong> (${total > 0 ? (stats[c.key].ass / total * 100).toFixed(1) : 0}%)</span>
+                </div>`).join('');
+        }
+
         function updateStats() {
             const allStats = categoryStats['All'] ?? emptyStats();
             document.getElementById('stats-wichita').innerHTML = statsHTML(allStats, '');
@@ -295,13 +355,16 @@
                 const ds = categoryStats[d] ?? emptyStats();
                 districtEl.style.display = 'block';
                 districtEl.innerHTML = statsHTML(ds, `District ${d}`);
+                updatePieChart(ds);
             } else if (!isAll && selectedDistricts.size > 1) {
                 const merged = mergeStats([...selectedDistricts]);
                 const names = [...selectedDistricts].sort((a, b) => Number(a) - Number(b)).join(', ');
                 districtEl.style.display = 'block';
                 districtEl.innerHTML = statsHTML(merged, `Districts ${names}`);
+                updatePieChart(merged);
             } else {
                 districtEl.style.display = 'none';
+                updatePieChart(categoryStats['All'] ?? emptyStats());
             }
         }
 

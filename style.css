@@ -281,6 +281,33 @@ body, html {
 }
 
 /* ─────────────────────────────────────────
+   PIE CHART
+───────────────────────────────────────── */
+
+#value-chart-section {
+    padding: 20px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+#valueChart {
+    max-width: 160px;
+    margin: 10px auto;
+}
+
+#value-chart-stats {
+    margin-top: 8px;
+    font-size: 11px;
+}
+
+.chart-stat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+/* ─────────────────────────────────────────
    DISTRICT FILTER
 ───────────────────────────────────────── */
 
