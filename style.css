@@ -240,7 +240,7 @@ body, html {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: minmax(min-content, 60px) 42px 36px max-content;
+    grid-template-columns: minmax(min-content, 76px) 42px 36px max-content;
     column-gap: 8px;
     row-gap: 5px;
     align-items: start;
