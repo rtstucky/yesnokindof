@@ -100,16 +100,37 @@
             const rawOwner = cleanOwnerAdd(p.ownerAdd || '');
             if (!rawOwner.trim()) return 'no-data';
 
-            // Normalize: uppercase, strip punctuation, collapse whitespace
             const norm = s => s.toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
             const ownerNorm = norm(rawOwner);
+            const st = norm(p.address || '').split(' ');
 
-            // Use first 3 tokens of situs (house# + direction + street name)
-            // to avoid mismatches on street type (AVE vs blank)
-            // e.g. "218 N BROADVIEW AVE" → "218 N BROADVIEW"
-            const situsPrefix = norm(p.address || '').split(' ').slice(0, 3).join(' ');
+            const DIRS     = new Set(['N','S','E','W','NE','NW','SE','SW']);
+            const SUFFIXES = new Set(['AVE','BLVD','CIR','CT','DR','HWY','LN','PKWY','PL','RD','ST','TER','WAY','TRL','LOOP']);
 
-            if (situsPrefix.length > 5 && ownerNorm.startsWith(situsPrefix)) {
+            // Parse situs into: house#, optional directional, street name, optional suffix
+            const house = st[0] || '';
+            let i = 1;
+            const dir = DIRS.has(st[i]) ? st[i++] : null;
+            const nameStart = i;
+            while (i < st.length && !SUFFIXES.has(st[i])) i++;
+            const streetName = st.slice(nameStart, i).join(' ');
+            const suf = SUFFIXES.has(st[i]) ? st[i] : null;
+
+            // Try matching with and without the directional — owner records often omit it.
+            // Key is house# + street name (no dir, no suffix) so "7518 BARRINGTON".
+            // Then reject if the token immediately after the key in the owner address
+            // is a known suffix that differs from ours (CT ≠ LN → different street).
+            const keys = [];
+            if (house && streetName) {
+                if (dir) keys.push(house + ' ' + dir + ' ' + streetName);
+                keys.push(house + ' ' + streetName);
+            }
+
+            for (const key of keys) {
+                if (key.length <= 5) continue;
+                if (ownerNorm !== key && !ownerNorm.startsWith(key + ' ')) continue;
+                const nextToken = ownerNorm.slice(key.length).trimStart().split(' ')[0] || '';
+                if (suf && SUFFIXES.has(nextToken) && nextToken !== suf) continue; // different suffix → different street
                 return 'owner-occupied';
             }
 
